@@ -3,15 +3,16 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useOptimistic, useState, useTransition } from 'react';
-import { endSession, setWinner } from '@/app/actions';
+import { endSession, setWinner, swapSharedSpot } from '@/app/actions';
 import { BackLink, Badge, Icon, Money, formatDate } from '@/components/ui';
 import { progress, tally, type LiveGame } from '@/lib/live';
 import { signedMoney } from '@/lib/money';
 import SessionMenu from './SessionMenu';
 
 interface Props {
-  session: { id: number; playedOn: string; courts: number; stakeCents: number };
-  roster: { id: number; name: string; active: boolean }[];
+  session: { id: number; playedOn: string; courts: number; stakeCents: number; bracket: string | null };
+  brackets: { id: number; label: string; status: string }[];
+  roster: { id: number; name: string; active: boolean; sharesWith: number | null }[];
   games: LiveGame[];
   byes: { round: number; playerId: number }[];
   bench: { id: number; name: string }[];
@@ -19,7 +20,7 @@ interface Props {
 
 const REFRESH_MS = 5000;
 
-export default function LiveBoard({ session, roster, games, byes, bench }: Props) {
+export default function LiveBoard({ session, brackets, roster, games, byes, bench }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [ending, startEnding] = useTransition();
@@ -39,6 +40,16 @@ export default function LiveBoard({ session, roster, games, byes, bench }: Props
   const names = useMemo(() => new Map(roster.map((p) => [p.id, p.name])), [roster]);
   const name = (id: number) => names.get(id) ?? '?';
   const active = roster.filter((p) => p.active);
+  // Shared spots: owner id -> the active person sharing it.
+  const sharer = new Map(active.filter((p) => p.sharesWith !== null).map((p) => [p.sharesWith!, p.id]));
+  const partnerOf = (id: number): number | undefined => {
+    const me = active.find((p) => p.id === id);
+    if (!me) return undefined;
+    return me.sharesWith ?? sharer.get(id);
+  };
+  // A bye is stored against the spot owner; show both names when the spot is shared.
+  const spotName = (owner: number) => (sharer.has(owner) ? `${name(owner)}/${name(sharer.get(owner)!)}` : name(owner));
+  const spots = active.filter((p) => p.sharesWith === null).length;
   const stake = session.stakeCents;
 
   const prog = progress(optimisticGames);
@@ -82,7 +93,7 @@ export default function LiveBoard({ session, roster, games, byes, bench }: Props
           <BackLink href="/" label="Back to home" />
           <span className="pill">
             <span className="dot" />
-            Live · {formatDate(session.playedOn)}
+            Live · {session.bracket ? `${session.bracket} bracket` : formatDate(session.playedOn)}
           </span>
           <SessionMenu sessionId={session.id} active={active} bench={bench} />
         </div>
@@ -92,8 +103,34 @@ export default function LiveBoard({ session, roster, games, byes, bench }: Props
           </h1>
           <Badge />
         </div>
+        {brackets.length > 1 && (
+          <nav aria-label="Brackets" style={{ display: 'grid', gridTemplateColumns: `repeat(${brackets.length}, minmax(0, 1fr))`, gap: 4, borderRadius: 99, padding: 4, background: 'var(--green-deep)' }}>
+            {brackets.map((b) => (
+              <Link
+                key={b.id}
+                href={b.status === 'completed' ? `/sessions/${b.id}/summary` : `/sessions/${b.id}`}
+                aria-current={b.id === session.id ? 'page' : undefined}
+                style={{
+                  minHeight: 40,
+                  borderRadius: 99,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  background: b.id === session.id ? 'var(--yellow-grad)' : 'transparent',
+                  color: b.id === session.id ? 'var(--green-ink)' : '#fff',
+                }}
+              >
+                {b.label} bracket{b.status === 'completed' ? ' · done' : ''}
+              </Link>
+            ))}
+          </nav>
+        )}
         <div className="small" style={{ color: 'var(--on-green-muted)', fontWeight: 600 }}>
-          {active.length} players · {session.courts} {session.courts === 1 ? 'court' : 'courts'}
+          {active.length} players{spots !== active.length ? ` in ${spots} spots` : ''} · {session.courts}{' '}
+          {session.courts === 1 ? 'court' : 'courts'}
         </div>
         <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={prog.total} aria-valuenow={prog.played}>
           <div style={{ width: `${prog.total ? (100 * prog.played) / prog.total : 0}%` }} />
@@ -132,7 +169,15 @@ export default function LiveBoard({ session, roster, games, byes, bench }: Props
               }}
             >
               <span className="num small muted">{i + 1}</span>
-              <span style={{ fontWeight: 600 }}>{name(r.playerId)}</span>
+              <span style={{ fontWeight: 600 }}>
+                {name(r.playerId)}
+                {partnerOf(r.playerId) !== undefined && (
+                  <span className="tiny muted" style={{ fontWeight: 600 }}>
+                    {' '}
+                    ⇄ {name(partnerOf(r.playerId)!)}
+                  </span>
+                )}
+              </span>
               <span className="num right">{r.wins}</span>
               <span className="num right">{r.losses}</span>
               <Money cents={r.netCents} className="right" style={{ fontSize: 17 }} />
@@ -161,13 +206,27 @@ export default function LiveBoard({ session, roster, games, byes, bench }: Props
                   </FragmentWithVs>
                 ))}
               </div>
+              {!g.winner &&
+                [g.a1, g.a2, g.b1, g.b2]
+                  .filter((p) => partnerOf(p) !== undefined)
+                  .map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      className="btn-outline"
+                      style={{ minHeight: 40, fontSize: 14, alignSelf: 'flex-start' }}
+                      onClick={() => startTransition(() => swapSharedSpot(g.id, p))}
+                    >
+                      ⇄ Put {name(partnerOf(p)!)} in for {name(p)}
+                    </button>
+                  ))}
             </div>
           ))}
           {now[1].byes.length > 0 && (
             <div className="notice">
               <Icon.Bench />
               <span>
-                <strong style={{ color: 'var(--green)' }}>Sitting out:</strong> {now[1].byes.map(name).join(', ')}
+                <strong style={{ color: 'var(--green)' }}>Sitting out:</strong> {now[1].byes.map(spotName).join(', ')}
               </span>
             </div>
           )}
@@ -205,7 +264,7 @@ export default function LiveBoard({ session, roster, games, byes, bench }: Props
                 </span>
                 {r.byes.length > 0 && (
                   <span className="muted" style={{ fontSize: 11, lineHeight: 1.25 }}>
-                    Out: {r.byes.map(name).join(', ')}
+                    Out: {r.byes.map(spotName).join(', ')}
                   </span>
                 )}
               </div>

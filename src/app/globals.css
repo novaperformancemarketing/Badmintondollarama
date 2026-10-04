@@ -821,3 +821,14 @@ select {
     background: var(--green);
   }
 }
+
+/* B-bracket players on the setup screen */
+.chip.chip-b[aria-pressed='true'] {
+  background: linear-gradient(160deg, #1d3d2c 0%, #0b2b1a 100%);
+  border-color: #0b2b1a;
+}
+
+.chip.chip-b[aria-pressed='true'] .initial {
+  background: #fff;
+  color: var(--green-ink);
+}

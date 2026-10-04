@@ -1,12 +1,12 @@
 import { Badge, BottomNav } from '@/components/ui';
-import { completedHistory, getActiveSession, listPlayers } from '@/lib/data';
+import { completedHistory, listPlayers } from '@/lib/data';
 import { playerLines } from '@/lib/stats';
 import PlayerList from './PlayerList';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PlayersPage() {
-  const [players, history, active] = await Promise.all([listPlayers(true), completedHistory('all'), getActiveSession()]);
+  const [players, history] = await Promise.all([listPlayers(true), completedHistory('all')]);
   const lines = playerLines(history.games);
 
   return (
@@ -28,7 +28,7 @@ export default async function PlayersPage() {
           losses: lines.get(p.id)?.losses ?? 0,
         }))}
       />
-      <BottomNav active="players" sessionHref={active ? `/sessions/${active.id}` : '/sessions/new'} />
+      <BottomNav active="players" />
     </main>
   );
 }

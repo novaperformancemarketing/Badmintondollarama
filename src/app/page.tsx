@@ -1,37 +1,39 @@
 import Link from 'next/link';
 import { BottomNav, Icon, Logo, Money, formatDate } from '@/components/ui';
-import { completedHistory, getActiveSession, getSessionDetail, listPlayers, playerNames } from '@/lib/data';
+import { completedHistory, getActiveSessions, getSessionDetail, listPlayers, playerNames } from '@/lib/data';
 import { progress, tally } from '@/lib/live';
+import { money } from '@/lib/money';
 import { netBySession, playerLines } from '@/lib/stats';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   const [active, history, names, roster] = await Promise.all([
-    getActiveSession(),
+    getActiveSessions(),
     completedHistory('all'),
     playerNames(),
     listPlayers(),
   ]);
-  const detail = active ? await getSessionDetail(active.id) : null;
   const name = (id: number) => names.get(id) ?? '?';
 
-  let live: null | { id: number; date: string; round: number | null; rounds: number; players: number; courts: number; leader: { id: number; cents: number } | null } = null;
-  if (detail) {
+  const details = (await Promise.all(active.map((s) => getSessionDetail(s.id)))).filter((d) => d !== null);
+  const live = details.map((detail) => {
     const p = progress(detail.games);
     const rows = tally(detail.games, detail.roster.filter((r) => r.active).map((r) => r.id), detail.session.stakeCents)
       .filter((r) => r.netCents > 0)
       .sort((a, b) => b.netCents - a.netCents);
-    live = {
+    return {
       id: detail.session.id,
+      bracket: detail.session.bracket,
       date: detail.session.playedOn,
       round: p.currentRound === null ? null : p.roundIndex,
       rounds: p.totalRounds,
       players: detail.roster.filter((r) => r.active).length,
       courts: detail.session.courts,
+      stakeCents: detail.session.stakeCents,
       leader: rows[0] ? { id: rows[0].playerId, cents: rows[0].netCents } : null,
     };
-  }
+  });
 
   const lines = [...playerLines(history.games).values()].sort((a, b) => b.netCents - a.netCents);
   const up = lines.filter((l) => l.netCents > 0).slice(0, 3);
@@ -59,32 +61,31 @@ export default async function HomePage() {
       </header>
 
       <div className="section" style={{ paddingTop: 20, gap: 14 }}>
-        {live && (
-          <div className="card pad stack" style={{ border: '2px solid var(--green)', padding: 18, gap: 12 }}>
+        {live.map((l) => (
+          <div key={l.id} className="card pad stack" style={{ border: '2px solid var(--green)', padding: 18, gap: 12 }}>
             <div className="section-head" style={{ alignItems: 'center' }}>
               <span className="pill">
                 <span className="dot" />
-                Live now
+                {l.bracket ? `Live · ${l.bracket} bracket` : 'Live now'}
               </span>
-              <span className="small muted">{formatDate(live.date)}</span>
+              <span className="small muted">{formatDate(l.date)}</span>
             </div>
             <div className="display" style={{ fontSize: 28, color: 'var(--green)' }}>
-              {live.round ? `Round ${live.round} of ${live.rounds}` : 'All rounds played'}
+              {l.round ? `Round ${l.round} of ${l.rounds}` : 'All rounds played'}
             </div>
             <div className="small muted">
-              {live.players} players · {live.courts} {live.courts === 1 ? 'court' : 'courts'}
-              {live.leader && (
+              {l.players} players · {l.courts} {l.courts === 1 ? 'court' : 'courts'} · {money(l.stakeCents)} a game
+              {l.leader && (
                 <>
-                  {' '}· Leading: <strong style={{ color: 'var(--ink)' }}>{name(live.leader.id)}</strong>{' '}
-                  <Money cents={live.leader.cents} />
+                  {' '}· Leading: <strong style={{ color: 'var(--ink)' }}>{name(l.leader.id)}</strong> <Money cents={l.leader.cents} />
                 </>
               )}
             </div>
-            <Link href={`/sessions/${live.id}`} className="btn-green">
-              Resume session
+            <Link href={`/sessions/${l.id}`} className="btn-green">
+              {l.bracket ? `Open ${l.bracket} bracket` : 'Resume session'}
             </Link>
           </div>
-        )}
+        ))}
 
         <Link href={roster.length < 4 ? '/players' : '/sessions/new'} className="btn-yellow" style={{ minHeight: 64, fontSize: 21 }}>
           <Icon.Plus size={22} />
@@ -140,7 +141,10 @@ export default async function HomePage() {
                 style={{ gridTemplateColumns: '1fr auto', minHeight: 62, borderTop: i === 0 ? 0 : undefined }}
               >
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <strong>{formatDate(session.playedOn)}</strong>
+                  <strong>
+                    {formatDate(session.playedOn)}
+                    {session.bracket ? ` · ${session.bracket} bracket` : ''}
+                  </strong>
                   <span className="small muted">{playerCount} players</span>
                 </span>
                 {top && top[1] > 0 && (
@@ -154,7 +158,7 @@ export default async function HomePage() {
         </section>
       )}
 
-      <BottomNav active="home" sessionHref={live ? `/sessions/${live.id}` : '/sessions/new'} />
+      <BottomNav active="home" />
     </main>
   );
 }

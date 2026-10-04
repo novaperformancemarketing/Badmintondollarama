@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { listPlayers, getSessionDetail } from '@/lib/data';
+import { getSessionDetail, getSiblingSessions, listPlayers } from '@/lib/data';
 import LiveBoard from './LiveBoard';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,12 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   const detail = await getSessionDetail(Number(id));
   if (!detail) notFound();
   if (detail.session.status === 'completed') redirect(`/sessions/${id}/summary`);
-  const everyone = await listPlayers();
+  const [everyone, siblings] = await Promise.all([listPlayers(), getSiblingSessions(detail.session)]);
+  // People playing in the other bracket tonight aren't available here.
+  const otherBrackets = await Promise.all(
+    siblings.filter((s) => s.id !== detail.session.id && s.status === 'active').map((s) => getSessionDetail(s.id)),
+  );
+  const elsewhere = new Set(otherBrackets.flatMap((d) => d?.roster.filter((r) => r.active).map((r) => r.id) ?? []));
 
   return (
     <LiveBoard
@@ -18,7 +23,9 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
         playedOn: detail.session.playedOn,
         courts: detail.session.courts,
         stakeCents: detail.session.stakeCents,
+        bracket: detail.session.bracket,
       }}
+      brackets={siblings.map((s) => ({ id: s.id, label: s.bracket ?? '', status: s.status }))}
       roster={detail.roster}
       games={detail.games.map((g) => ({
         id: g.id,
@@ -31,7 +38,9 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
         winner: g.winner,
       }))}
       byes={detail.byes.map((b) => ({ round: b.round, playerId: b.playerId }))}
-      bench={everyone.filter((p) => !detail.roster.some((r) => r.id === p.id && r.active)).map((p) => ({ id: p.id, name: p.name }))}
+      bench={everyone
+        .filter((p) => !elsewhere.has(p.id) && !detail.roster.some((r) => r.id === p.id && r.active))
+        .map((p) => ({ id: p.id, name: p.name }))}
     />
   );
 }

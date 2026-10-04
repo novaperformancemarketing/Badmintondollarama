@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { BackLink, Badge, BottomNav, Money, formatDate } from '@/components/ui';
-import { completedHistory, getActiveSession, listPlayers, playerNames } from '@/lib/data';
+import { completedHistory, listPlayers, playerNames } from '@/lib/data';
 import { signedMoney } from '@/lib/money';
 import { netBySession, opponentLines, partnerLines, playerLines } from '@/lib/stats';
 import PlayerSettings from './PlayerSettings';
@@ -10,12 +10,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
   const playerId = Number((await params).id);
-  const [everyone, names, history, active] = await Promise.all([
-    listPlayers(true),
-    playerNames(),
-    completedHistory('all'),
-    getActiveSession(),
-  ]);
+  const [everyone, names, history] = await Promise.all([listPlayers(true), playerNames(), completedHistory('all')]);
   const player = everyone.find((p) => p.id === playerId);
   if (!player) notFound();
   const name = (id: number) => names.get(id) ?? '?';
@@ -206,7 +201,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
 
       <PlayerSettings id={player.id} name={player.name} archived={player.archived} />
 
-      <BottomNav active="players" sessionHref={active ? `/sessions/${active.id}` : '/sessions/new'} />
+      <BottomNav active="players" />
     </main>
   );
 }

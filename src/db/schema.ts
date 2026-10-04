@@ -22,13 +22,21 @@ export const sessions = pgTable('sessions', {
   playedOn: date('played_on', { mode: 'string' }).notNull(),
   stakeCents: integer('stake_cents').notNull().default(100),
   courts: integer('courts').notNull(),
+  /** 'A' / 'B' when the night is split into brackets that run side by side. */
+  bracket: text('bracket'),
+  /** Shared by brackets created together, so they can link to each other. */
+  groupKey: text('group_key'),
   /** 'active' while games are being played, 'completed' once settled. */
   status: text('status', { enum: ['active', 'completed'] }).notNull().default('active'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   endedAt: timestamp('ended_at', { withTimezone: true }),
 });
 
-/** Who is (or was) part of a session. Inactive rows are players who left mid-session. */
+/**
+ * Who is (or was) part of a session. Inactive rows are players who left mid-session.
+ * A row with sharesWith set shares that player's spot: the scheduler treats the two
+ * as one slot and they alternate games.
+ */
 export const sessionPlayers = pgTable(
   'session_players',
   {
@@ -39,6 +47,7 @@ export const sessionPlayers = pgTable(
       .notNull()
       .references(() => players.id),
     active: boolean('active').notNull().default(true),
+    sharesWith: integer('shares_with').references(() => players.id),
   },
   (t) => [primaryKey({ columns: [t.sessionId, t.playerId] })],
 );

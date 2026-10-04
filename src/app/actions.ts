@@ -6,9 +6,10 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getDb, schema, type Db } from '@/db';
 import { AUTH_COOKIE, passcodeToken } from '@/lib/auth';
-import { getSessionDetail, toRounds } from '@/lib/data';
+import { getSessionDetail, toRounds, type SessionDetail } from '@/lib/data';
 import { settleUp } from '@/lib/money';
 import { generateSchedule, gamesPerRound, type Round } from '@/lib/schedule';
+import { activeSharers, activeSlots, assignPeople, nextUp, shareState, slotMap, toSlotRound } from '@/lib/slots';
 
 const { players, sessions, sessionPlayers, games, byes, payments } = schema;
 
@@ -99,37 +100,78 @@ async function insertRounds(db: Db, sessionId: number, startRound: number, round
   if (byeRows.length) await db.insert(byes).values(byeRows);
 }
 
+/** What the setup screen sends: one entry per bracket. */
+interface BracketConfig {
+  label: string | null;
+  courts: number;
+  rounds: number;
+  stakeCents: number;
+  /** Players by id, or by name for people typed in on the setup screen. */
+  members: { id?: number; name?: string }[];
+  /** Index pairs into `members`: [spot owner, sharer]. */
+  pairs: [number, number][];
+}
+
 export async function createSession(_: FormState, form: FormData): Promise<FormState> {
   const db = await getDb();
-  const ids = form.getAll('player').map(Number).filter(Number.isFinite);
-  const courts = Math.max(1, Math.min(8, Number(form.get('courts')) || 1));
-  const roundCount = Math.max(1, Math.min(40, Number(form.get('rounds')) || 1));
-  const stakeCents = Math.max(25, Math.min(10000, Math.round(Number(form.get('stake')) * 100) || 100));
+  let configs: BracketConfig[];
+  try {
+    configs = JSON.parse(String(form.get('config') ?? '[]'));
+  } catch {
+    return { error: 'Something went wrong reading the setup. Try again.' };
+  }
+  if (!Array.isArray(configs) || configs.length === 0 || configs.length > 2) return { error: 'Set up one or two brackets.' };
   const playedOn = /^\d{4}-\d{2}-\d{2}$/.test(String(form.get('playedOn')))
     ? String(form.get('playedOn'))
     : new Date().toISOString().slice(0, 10);
 
-  for (const raw of form.getAll('newName')) {
-    const name = cleanName(raw);
-    if (name) ids.push(await findOrCreatePlayer(db, name));
+  // Validate everything before writing anything.
+  const seen = new Set<string>();
+  for (const c of configs) {
+    const name = c.label ? `${c.label} bracket` : 'This session';
+    const slots = c.members.length - c.pairs.length;
+    if (slots < 4) return { error: `${name} needs at least 4 spots for doubles.` };
+    if (gamesPerRound(slots, Math.max(1, c.courts)) === 0) return { error: `${name} needs more players.` };
+    for (const m of c.members) {
+      const key = m.id ? `id:${m.id}` : `name:${cleanName(m.name).toLowerCase()}`;
+      if (seen.has(key)) return { error: 'Someone is in both brackets.' };
+      seen.add(key);
+    }
+    const paired = c.pairs.flat();
+    if (new Set(paired).size !== paired.length || paired.some((i) => i < 0 || i >= c.members.length))
+      return { error: 'Each person can only share one spot.' };
   }
-  const roster = [...new Set(ids)];
-  if (roster.length < 4) return { error: 'Pick at least 4 players for doubles.' };
-  if (gamesPerRound(roster.length, courts) === 0) return { error: 'Not enough players for a game.' };
 
-  const [session] = await db
-    .insert(sessions)
-    .values({ playedOn, courts, stakeCents })
-    .returning({ id: sessions.id });
-  await db.insert(sessionPlayers).values(roster.map((playerId) => ({ sessionId: session.id, playerId })));
-  await insertRounds(db, session.id, 1, generateSchedule({ players: roster, courts, rounds: roundCount }));
+  const groupKey = configs.length > 1 ? crypto.randomUUID() : null;
+  const created: number[] = [];
+  for (const c of configs) {
+    const ids: number[] = [];
+    for (const m of c.members) ids.push(m.id ? Number(m.id) : await findOrCreatePlayer(db, cleanName(m.name)));
+    const sharesWith = new Map<number, number>(c.pairs.map(([owner, sharer]) => [ids[sharer], ids[owner]]));
+    const courts = Math.max(1, Math.min(8, Math.round(c.courts)));
+    const roundCount = Math.max(1, Math.min(40, Math.round(c.rounds)));
+    const stakeCents = Math.max(25, Math.min(10000, Math.round(c.stakeCents) || 100));
 
-  revalidatePath('/');
-  redirect(`/sessions/${session.id}`);
+    const [session] = await db
+      .insert(sessions)
+      .values({ playedOn, courts, stakeCents, bracket: c.label, groupKey })
+      .returning({ id: sessions.id });
+    const roster = ids.map((playerId) => ({ id: playerId, active: true, sharesWith: sharesWith.get(playerId) ?? null }));
+    await db
+      .insert(sessionPlayers)
+      .values(roster.map((r) => ({ sessionId: session.id, playerId: r.id, sharesWith: r.sharesWith })));
+    const slotRounds = generateSchedule({ players: activeSlots(roster), courts, rounds: roundCount });
+    const people = assignPeople(slotRounds, activeSharers(roster), shareState([], slotMap(roster)));
+    await insertRounds(db, session.id, 1, people);
+    created.push(session.id);
+  }
+
+  revalidatePath('/', 'layout');
+  redirect(`/sessions/${created[0]}`);
 }
 
 /** The round on court: the first one with an unfinished game. */
-function currentRound(detail: NonNullable<Awaited<ReturnType<typeof getSessionDetail>>>): number {
+function currentRound(detail: SessionDetail): number {
   const open = detail.games.filter((g) => !g.winner).map((g) => g.round);
   return open.length ? Math.min(...open) : Infinity;
 }
@@ -150,9 +192,39 @@ async function rebuildFuture(db: Db, sessionId: number, extraRounds = 0) {
   await db.delete(games).where(and(eq(games.sessionId, sessionId), gt(games.round, lastKept)));
   await db.delete(byes).where(and(eq(byes.sessionId, sessionId), gt(byes.round, lastKept)));
 
-  const active = detail.roster.filter((p) => p.active).map((p) => p.id);
-  const next = generateSchedule({ players: active, courts: detail.session.courts, rounds: futureCount, previous: kept });
-  await insertRounds(db, sessionId, lastKept + 1, next);
+  const slots = slotMap(detail.roster);
+  const keptSlots = kept.map((r) => toSlotRound(r, slots));
+  const next = generateSchedule({
+    players: activeSlots(detail.roster),
+    courts: detail.session.courts,
+    rounds: futureCount,
+    previous: keptSlots,
+  });
+  await insertRounds(db, sessionId, lastKept + 1, assignPeople(next, activeSharers(detail.roster), shareState(kept, slots)));
+}
+
+/** Re-runs the alternation for a shared spot over its unplayed games after `afterRound`. */
+async function realternate(db: Db, sessionId: number, slot: number, afterRound: number) {
+  const detail = await getSessionDetail(sessionId);
+  if (!detail) return;
+  const sharer = activeSharers(detail.roster).get(slot);
+  const people = sharer === undefined ? [slot] : [slot, sharer];
+  const slots = slotMap(detail.roster);
+  const isSlot = (p: number) => slots.get(p) === slot;
+  const settled = detail.games.filter((g) => g.round <= afterRound || g.winner);
+  const state = shareState(
+    settled.map((g) => ({ games: [[g.a1, g.a2, g.b1, g.b2]], byes: [] })),
+    slots,
+  );
+  const upcoming = detail.games.filter((g) => g.round > afterRound && !g.winner).sort((a, b) => a.round - b.round || a.court - b.court);
+  for (const g of upcoming) {
+    const seats = (['a1', 'a2', 'b1', 'b2'] as const).filter((k) => isSlot(g[k]));
+    if (!seats.length) continue;
+    const person = people.length === 2 ? nextUp(slot, people[1], state) : slot;
+    state.played.set(person, (state.played.get(person) ?? 0) + 1);
+    state.last.set(slot, person);
+    if (g[seats[0]] !== person) await db.update(games).set({ [seats[0]]: person }).where(eq(games.id, g.id));
+  }
 }
 
 export async function setWinner(gameId: number, winner: 'A' | 'B' | null) {
@@ -165,6 +237,24 @@ export async function setWinner(gameId: number, winner: 'A' | 'B' | null) {
   revalidatePath(`/sessions/${game.sessionId}`);
 }
 
+/** Swap who fills a shared spot in one game; later games keep alternating from there. */
+export async function swapSharedSpot(gameId: number, outId: number) {
+  const db = await getDb();
+  const [game] = await db.select().from(games).where(eq(games.id, gameId));
+  if (!game || game.winner) return;
+  const detail = await getSessionDetail(game.sessionId);
+  if (!detail || detail.session.status !== 'active') return;
+  const slot = slotMap(detail.roster).get(outId) ?? outId;
+  const sharer = activeSharers(detail.roster).get(slot);
+  if (sharer === undefined) return;
+  const inId = outId === slot ? sharer : slot;
+  const seat = (['a1', 'a2', 'b1', 'b2'] as const).find((k) => game[k] === outId);
+  if (!seat) return;
+  await db.update(games).set({ [seat]: inId, updatedAt: new Date() }).where(eq(games.id, gameId));
+  await realternate(db, game.sessionId, slot, game.round);
+  revalidatePath(`/sessions/${game.sessionId}`);
+}
+
 export async function addLatePlayer(_: FormState, form: FormData): Promise<FormState> {
   const sessionId = Number(form.get('sessionId'));
   const db = await getDb();
@@ -172,31 +262,69 @@ export async function addLatePlayer(_: FormState, form: FormData): Promise<FormS
   const picked = Number(form.get('playerId'));
   const playerId = name ? await findOrCreatePlayer(db, name) : picked;
   if (!playerId) return { error: 'Pick a player or type a new name.' };
+  const shareWith = Number(form.get('shareWith')) || null;
+  const current = await getSessionDetail(sessionId);
+  if (!current || current.session.status !== 'active') return { error: 'This session has ended.' };
+  if (current.roster.some((r) => r.id === playerId && r.active)) return { error: 'They are already playing tonight.' };
+  if (shareWith && !activeSlots(current.roster).includes(shareWith)) return { error: 'That spot is not available to share.' };
+  if (shareWith && activeSharers(current.roster).has(shareWith)) return { error: 'That spot is already shared.' };
 
   const [row] = await db
     .select()
     .from(sessionPlayers)
     .where(and(eq(sessionPlayers.sessionId, sessionId), eq(sessionPlayers.playerId, playerId)));
+  const values = { active: true, sharesWith: shareWith };
   if (row) {
     await db
       .update(sessionPlayers)
-      .set({ active: true })
+      .set(values)
       .where(and(eq(sessionPlayers.sessionId, sessionId), eq(sessionPlayers.playerId, playerId)));
   } else {
-    await db.insert(sessionPlayers).values({ sessionId, playerId });
+    await db.insert(sessionPlayers).values({ sessionId, playerId, ...values });
   }
-  await rebuildFuture(db, sessionId);
+
+  if (shareWith) {
+    // Same number of spots, so the schedule stays; the newcomer takes alternate games.
+    const detail = await getSessionDetail(sessionId);
+    // Leave the round on court alone; alternation starts from the next round.
+    if (detail) await realternate(db, sessionId, shareWith, Math.min(currentRound(detail), 999));
+  } else {
+    await rebuildFuture(db, sessionId);
+  }
   revalidatePath(`/sessions/${sessionId}`);
   return {};
 }
 
 export async function removeFromSession(sessionId: number, playerId: number) {
   const db = await getDb();
-  await db
-    .update(sessionPlayers)
-    .set({ active: false })
-    .where(and(eq(sessionPlayers.sessionId, sessionId), eq(sessionPlayers.playerId, playerId)));
-  await rebuildFuture(db, sessionId);
+  const detail = await getSessionDetail(sessionId);
+  if (!detail) return;
+  const me = detail.roster.find((r) => r.id === playerId);
+  if (!me) return;
+  const where = (pid: number) => and(eq(sessionPlayers.sessionId, sessionId), eq(sessionPlayers.playerId, pid));
+  await db.update(sessionPlayers).set({ active: false }).where(where(playerId));
+
+  const slot = me.sharesWith ?? me.id;
+  const partner = me.sharesWith !== null ? me.sharesWith : activeSharers(detail.roster).get(me.id);
+  if (partner !== undefined && detail.roster.find((r) => r.id === partner)?.active) {
+    // A shared spot: the other person simply takes over the spot.
+    if (me.sharesWith === null) {
+      await db.update(sessionPlayers).set({ sharesWith: null }).where(where(partner));
+      const from = currentRound(detail);
+      await db
+        .update(byes)
+        .set({ playerId: partner })
+        .where(and(eq(byes.sessionId, sessionId), eq(byes.playerId, slot), gt(byes.round, from - 1)));
+    }
+    const replaced = me.sharesWith === null ? partner : slot;
+    for (const g of detail.games) {
+      if (g.winner) continue;
+      const seat = (['a1', 'a2', 'b1', 'b2'] as const).find((k) => g[k] === playerId);
+      if (seat) await db.update(games).set({ [seat]: replaced }).where(eq(games.id, g.id));
+    }
+  } else {
+    await rebuildFuture(db, sessionId);
+  }
   revalidatePath(`/sessions/${sessionId}`);
 }
 

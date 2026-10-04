@@ -35,7 +35,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
           : 'All square tonight';
 
   const shareText = [
-    `🏸 Smash Champs Dollarama · ${formatDate(session.playedOn)}`,
+    `🏸 Smash Champs Dollarama${session.bracket ? ` · ${session.bracket} bracket` : ''} · ${formatDate(session.playedOn)}`,
     ...rows.map((r) => `${name(r.playerId)} ${signedMoney(r.netCents)} (${r.wins}–${r.losses})`),
     detail.payments.length ? '\nSettle up:' : '',
     ...detail.payments.map((p) => `${name(p.fromId)} → ${name(p.toId)} ${money(p.amountCents)}`),
@@ -51,7 +51,8 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         </div>
         <Logo />
         <span className="pill" style={{ alignSelf: 'flex-start' }}>
-          {session.status === 'completed' ? 'Final' : 'In progress'} · {formatDate(session.playedOn)}
+          {session.status === 'completed' ? 'Final' : 'In progress'}
+          {session.bracket ? ` · ${session.bracket} bracket` : ''} · {formatDate(session.playedOn)}
         </span>
         <h1 className="title">{headline}</h1>
         <div className="sub">

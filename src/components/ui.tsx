@@ -100,10 +100,10 @@ export function Money({ cents, className = '', style }: { cents: number; classNa
 
 type NavKey = 'home' | 'session' | 'leaders' | 'players';
 
-export function BottomNav({ active, sessionHref }: { active: NavKey; sessionHref: string }) {
+export function BottomNav({ active }: { active: NavKey }) {
   const items: { key: NavKey; href: string; label: string; icon: ReactNode }[] = [
     { key: 'home', href: '/', label: 'Home', icon: <Icon.Home /> },
-    { key: 'session', href: sessionHref, label: 'Session', icon: <Icon.Session /> },
+    { key: 'session', href: '/sessions/live', label: 'Session', icon: <Icon.Session /> },
     { key: 'leaders', href: '/leaderboard', label: 'Leaders', icon: <Icon.Bars /> },
     { key: 'players', href: '/players', label: 'Players', icon: <Icon.Users /> },
   ];

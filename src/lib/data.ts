@@ -20,15 +20,24 @@ export async function playerNames(): Promise<Map<number, string>> {
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
-export async function getActiveSession() {
+/** Active sessions, newest first; brackets of the same night sit together (A before B). */
+export async function getActiveSessions() {
   const db = await getDb();
-  const [row] = await db
-    .select()
-    .from(sessions)
-    .where(eq(sessions.status, 'active'))
-    .orderBy(desc(sessions.createdAt))
-    .limit(1);
-  return row ?? null;
+  const rows = await db.select().from(sessions).where(eq(sessions.status, 'active')).orderBy(desc(sessions.createdAt));
+  return rows.sort(
+    (a, b) =>
+      b.createdAt.getTime() - a.createdAt.getTime() ||
+      (a.groupKey ?? '').localeCompare(b.groupKey ?? '') ||
+      (a.bracket ?? '').localeCompare(b.bracket ?? ''),
+  );
+}
+
+/** Other brackets created alongside this session. */
+export async function getSiblingSessions(session: { id: number; groupKey: string | null }) {
+  if (!session.groupKey) return [];
+  const db = await getDb();
+  const rows = await db.select().from(sessions).where(eq(sessions.groupKey, session.groupKey)).orderBy(asc(sessions.bracket));
+  return rows;
 }
 
 export async function getSessionDetail(id: number) {
@@ -37,7 +46,7 @@ export async function getSessionDetail(id: number) {
   if (!session) return null;
   const [roster, gameRows, byeRows, paymentRows] = await Promise.all([
     db
-      .select({ id: players.id, name: players.name, active: sessionPlayers.active })
+      .select({ id: players.id, name: players.name, active: sessionPlayers.active, sharesWith: sessionPlayers.sharesWith })
       .from(sessionPlayers)
       .innerJoin(players, eq(players.id, sessionPlayers.playerId))
       .where(eq(sessionPlayers.sessionId, id))

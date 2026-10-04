@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Badge, BottomNav, Money, formatDate } from '@/components/ui';
-import { completedHistory, getActiveSession, playerNames, type Range } from '@/lib/data';
+import { completedHistory, playerNames, type Range } from '@/lib/data';
 import { cumulativeSeries, netBySession, playerLines } from '@/lib/stats';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,7 @@ const SERIES_COLORS = ['#036230', '#c9b800', '#c0281a'];
 export default async function LeaderboardPage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
   const { range: raw } = await searchParams;
   const range: Range = raw === 'season' || raw === '30d' ? raw : 'all';
-  const [history, names, active] = await Promise.all([completedHistory(range), playerNames(), getActiveSession()]);
+  const [history, names] = await Promise.all([completedHistory(range), playerNames()]);
   const name = (id: number) => names.get(id) ?? '?';
 
   const lines = [...playerLines(history.games).values()].sort(
@@ -163,7 +163,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
         </>
       )}
 
-      <BottomNav active="leaders" sessionHref={active ? `/sessions/${active.id}` : '/sessions/new'} />
+      <BottomNav active="leaders" />
     </main>
   );
 }
