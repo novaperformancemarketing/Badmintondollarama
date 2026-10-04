@@ -338,6 +338,12 @@ export async function endSession(sessionId: number) {
   const db = await getDb();
   const detail = await getSessionDetail(sessionId);
   if (!detail) return;
+  if (detail.session.status === 'active' && !detail.games.some((g) => g.winner)) {
+    // Nothing was played: don't keep an empty session in the history.
+    await db.delete(sessions).where(eq(sessions.id, sessionId));
+    revalidatePath('/', 'layout');
+    redirect('/');
+  }
   if (detail.session.status === 'active') {
     // Unplayed games are dropped so they never show up in history.
     await db.delete(games).where(and(eq(games.sessionId, sessionId), isNull(games.winner)));

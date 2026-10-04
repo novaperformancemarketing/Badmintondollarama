@@ -41,6 +41,7 @@ export default async function HomePage() {
 
   const perSession = netBySession(history.games, history.sessions.map((s) => s.id));
   const recent = history.sessions
+    .filter((s) => perSession.get(s.id)?.size)
     .slice(-3)
     .reverse()
     .map((s) => {
