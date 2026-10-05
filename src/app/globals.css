@@ -832,3 +832,113 @@ select {
   background: #fff;
   color: var(--green-ink);
 }
+
+/* ---------- Responsive: tablets and computers ---------- */
+
+html {
+  overflow-x: clip;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.logo {
+  max-width: 358px;
+}
+
+@media (hover: hover) {
+  a.table-row:hover {
+    background: rgba(245, 231, 21, 0.16);
+  }
+  .team:not(.win):not(.lose):hover {
+    border-color: var(--green);
+  }
+  .chip:hover {
+    border-color: var(--green);
+  }
+}
+
+@media (min-width: 768px) {
+  .screen {
+    max-width: 980px;
+  }
+
+  /* Green header runs edge to edge; its content lines up with the page. */
+  .band {
+    margin-inline: calc(50% - 50vw);
+    padding-left: max(24px, calc(50vw - 50% + 24px)) !important;
+    padding-right: max(24px, calc(50vw - 50% + 24px)) !important;
+  }
+
+  .section {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .cols.cols-lg {
+    display: block;
+  }
+
+  /* A single item in a column layout gets the full width. */
+  .cols > :only-child {
+    grid-column: 1 / -1;
+  }
+
+  .title {
+    font-size: 32px;
+  }
+
+  .h2 {
+    font-size: 22px;
+  }
+
+  .badge-img {
+    width: 56px;
+    height: 56px;
+  }
+
+  .logo {
+    max-width: 460px;
+  }
+
+  .footer-actions {
+    width: 100%;
+    max-width: 560px;
+    margin-inline: auto;
+  }
+
+  .team-big {
+    min-height: 120px;
+  }
+
+  .team-big .names {
+    font-size: 20px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .screen {
+    max-width: 1200px;
+  }
+
+  .cols.cols-lg {
+    display: grid;
+    grid-template-columns: 5fr 7fr;
+  }
+
+  /* Keep a lone table at a readable width instead of stretching it across the screen. */
+  .cols.cols-lg > :only-child {
+    width: 100%;
+    max-width: 860px;
+    margin-inline: auto;
+  }
+}

@@ -61,6 +61,7 @@ export default async function HomePage() {
         </div>
       </header>
 
+      <div className="cols">
       <div className="section" style={{ paddingTop: 20, gap: 14 }}>
         {live.map((l) => (
           <div key={l.id} className="card pad stack" style={{ border: '2px solid var(--green)', padding: 18, gap: 12 }}>
@@ -94,6 +95,7 @@ export default async function HomePage() {
         </Link>
       </div>
 
+      <div className="col">
       <section className="section" style={{ paddingTop: 24 }}>
         <div className="section-head">
           <h2 className="h2">All-time money</h2>
@@ -158,6 +160,9 @@ export default async function HomePage() {
           </div>
         </section>
       )}
+
+      </div>
+      </div>
 
       <BottomNav active="home" />
     </main>

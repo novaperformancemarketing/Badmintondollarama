@@ -29,6 +29,7 @@ export default function PlayerList({ players }: { players: Row[] }) {
 
   return (
     <>
+      <div className="cols">
       <section className="section">
         <h2 className="h2">Add a player</h2>
         <form ref={formRef} action={action} style={{ display: 'flex', gap: 8 }}>
@@ -93,6 +94,7 @@ export default function PlayerList({ players }: { players: Row[] }) {
           </>
         )}
       </section>
+      </div>
     </>
   );
 }

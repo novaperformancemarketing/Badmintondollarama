@@ -256,6 +256,7 @@ export default function SetupForm({ players, preselected }: Props) {
         )}
       </section>
 
+      <div className={split ? 'cols' : undefined}>
       {labels.map((l, i) => (
         <BracketFormat
           key={l}
@@ -266,6 +267,7 @@ export default function SetupForm({ players, preselected }: Props) {
           onChange={(f) => setFormats((prev) => ({ ...prev, [l]: f }))}
         />
       ))}
+      </div>
 
       <div className="footer-actions">
         {state?.error && (

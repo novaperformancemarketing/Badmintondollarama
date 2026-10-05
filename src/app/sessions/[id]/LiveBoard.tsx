@@ -140,6 +140,7 @@ export default function LiveBoard({ session, brackets, roster, games, byes, benc
         </div>
       </header>
 
+      <div className="cols">
       <section className="section">
         <div className="section-head">
           <h2 className="h2">Tonight&apos;s tally</h2>
@@ -232,6 +233,8 @@ export default function LiveBoard({ session, brackets, roster, games, byes, benc
           )}
         </section>
       )}
+
+      </div>
 
       <section className="section">
         <div className="section-head">

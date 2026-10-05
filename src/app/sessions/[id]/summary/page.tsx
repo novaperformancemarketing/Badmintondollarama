@@ -60,6 +60,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         </div>
       </header>
 
+      <div className="cols">
       <section className="section">
         <h2 className="h2">Final standings</h2>
         <div className="card">
@@ -87,6 +88,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         </div>
       </section>
 
+      <div className="col">
       {session.status === 'completed' && (
         <section className="section" style={{ paddingTop: 24 }}>
           <div className="section-head">
@@ -132,6 +134,9 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
           </div>
         </section>
       )}
+
+      </div>
+      </div>
 
       <div className="footer-actions">
         <ShareButton text={shareText} />

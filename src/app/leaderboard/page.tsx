@@ -77,6 +77,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
         </section>
       ) : (
         <>
+          <div className="cols cols-lg">
           {history.sessions.length > 1 && (
             <section className="section" style={{ paddingTop: 18 }}>
               <div className="card pad stack">
@@ -160,6 +161,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
               })}
             </div>
           </section>
+          </div>
         </>
       )}
 

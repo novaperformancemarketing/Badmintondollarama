@@ -77,7 +77,8 @@ export function Logo({ width = 358 }: { width?: number }) {
       height={Math.round((width * 218) / 1000)}
       priority
       unoptimized
-      style={{ display: 'block', width: '100%', maxWidth: width, height: 'auto' }}
+      className="logo"
+      style={{ display: 'block', width: '100%', height: 'auto' }}
     />
   );
 }

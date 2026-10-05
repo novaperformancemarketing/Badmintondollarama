@@ -75,6 +75,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
         </div>
       </section>
 
+      <div className="cols">
       {partners.length > 0 && (
         <section className="section">
           <h2 className="h2">Partners</h2>
@@ -170,6 +171,8 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
           </div>
         </section>
       )}
+
+      </div>
 
       {nights.length > 0 && (
         <section className="section">
