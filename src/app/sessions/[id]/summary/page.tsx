@@ -1,17 +1,18 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { BackLink, Logo, Money, formatDate } from '@/components/ui';
-import { getSessionDetail, playerNames, toRecords } from '@/lib/data';
+import { getSessionDetail, getTab, playerNames, toRecords } from '@/lib/data';
 import { tally } from '@/lib/live';
 import { money, signedMoney } from '@/lib/money';
 import { sessionStories } from '@/lib/stats';
-import { PaymentRow, ShareButton, SummaryActions } from './SummaryClient';
+import { TransferList } from '@/components/TabClient';
+import { ShareButton, SummaryActions } from './SummaryClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SummaryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [detail, names] = await Promise.all([getSessionDetail(Number(id)), playerNames()]);
+  const [detail, names, tab] = await Promise.all([getSessionDetail(Number(id)), playerNames(), getTab()]);
   if (!detail) notFound();
   const name = (pid: number) => names.get(pid) ?? '?';
   const { session } = detail;
@@ -24,6 +25,10 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   const moved = rows.filter((r) => r.netCents > 0).reduce((s, r) => s + r.netCents, 0);
   const leaders = rows.filter((r) => rows[0] && r.netCents === rows[0].netCents && r.netCents > 0);
   const stories = sessionStories(toRecords(detail));
+  // Settling happens on the running tab, so earlier nights net out. Show what's
+  // outstanding for anyone who played tonight.
+  const tonight = new Set(rows.map((r) => r.playerId));
+  const owing = tab.transfers.filter((t) => tonight.has(t.from) || tonight.has(t.to));
 
   const headline =
     rows.length === 0
@@ -37,8 +42,8 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   const shareText = [
     `🏸 Smash Champs Dollarama${session.bracket ? ` · ${session.bracket} bracket` : ''} · ${formatDate(session.playedOn)}`,
     ...rows.map((r) => `${name(r.playerId)} ${signedMoney(r.netCents)} (${r.wins}–${r.losses})`),
-    detail.payments.length ? '\nSettle up:' : '',
-    ...detail.payments.map((p) => `${name(p.fromId)} → ${name(p.toId)} ${money(p.amountCents)}`),
+    owing.length ? '\nSettle up (running tab):' : '',
+    ...owing.map((t) => `${name(t.from)} → ${name(t.to)} ${money(t.amountCents)}`),
   ]
     .filter(Boolean)
     .join('\n');
@@ -93,24 +98,12 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         <section className="section" style={{ paddingTop: 24 }}>
           <div className="section-head">
             <h2 className="h2">Settle up</h2>
-            <span className="tiny muted">
-              {detail.payments.length === 0
-                ? 'Everyone is square'
-                : `${detail.payments.length} payment${detail.payments.length === 1 ? '' : 's'} clears everyone`}
-            </span>
+            <Link href="/tab" className="link-strong">
+              Full tab
+            </Link>
           </div>
-          {detail.payments.length > 0 && (
-            <div className="card clip">
-              {detail.payments.map((p) => (
-                <PaymentRow key={p.id} id={p.id} paid={p.paid} from={name(p.fromId)} to={name(p.toId)} amount={money(p.amountCents)} />
-              ))}
-            </div>
-          )}
-          {detail.payments.length > 0 && detail.payments.every((p) => p.paid) && (
-            <div className="notice" style={{ justifyContent: 'center', fontWeight: 700 }}>
-              All square!
-            </div>
-          )}
+          <span className="small muted">Running tab: earlier nights net out, so you only pay the difference.</span>
+          <TransferList transfers={owing.map((t) => ({ ...t, fromName: name(t.from), toName: name(t.to) }))} />
         </section>
       )}
 

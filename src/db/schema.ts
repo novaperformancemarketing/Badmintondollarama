@@ -109,3 +109,21 @@ export type Player = typeof players.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
+
+/**
+ * Money actually handed over between players. Balances on the tab are every
+ * finished session's results minus these, so debts net out across sessions.
+ */
+export const settlements = pgTable('settlements', {
+  id: serial('id').primaryKey(),
+  fromId: integer('from_id')
+    .notNull()
+    .references(() => players.id),
+  toId: integer('to_id')
+    .notNull()
+    .references(() => players.id),
+  amountCents: integer('amount_cents').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Settlement = typeof settlements.$inferSelect;

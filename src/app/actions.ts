@@ -7,11 +7,10 @@ import { redirect } from 'next/navigation';
 import { getDb, schema, type Db } from '@/db';
 import { AUTH_COOKIE, passcodeToken } from '@/lib/auth';
 import { getSessionDetail, toRounds, type SessionDetail } from '@/lib/data';
-import { settleUp } from '@/lib/money';
 import { generateSchedule, gamesPerRound, type Round } from '@/lib/schedule';
 import { activeSharers, activeSlots, assignPeople, nextUp, shareState, slotMap, toSlotRound } from '@/lib/slots';
 
-const { players, sessions, sessionPlayers, games, byes, payments } = schema;
+const { players, sessions, sessionPlayers, games, byes, settlements } = schema;
 
 export type FormState = { error?: string } | undefined;
 
@@ -355,21 +354,7 @@ export async function endSession(sessionId: number) {
         .where(and(eq(byes.sessionId, sessionId), inArray(byes.round, [...new Set(byeRows.map((b) => b.round))])));
     }
 
-    const balances = new Map<number, number>();
-    for (const g of detail.games) {
-      if (!g.winner) continue;
-      const win = g.winner === 'A' ? [g.a1, g.a2] : [g.b1, g.b2];
-      const lose = g.winner === 'A' ? [g.b1, g.b2] : [g.a1, g.a2];
-      for (const p of win) balances.set(p, (balances.get(p) ?? 0) + detail.session.stakeCents);
-      for (const p of lose) balances.set(p, (balances.get(p) ?? 0) - detail.session.stakeCents);
-    }
-    const transfers = settleUp(balances);
-    await db.delete(payments).where(eq(payments.sessionId, sessionId));
-    if (transfers.length) {
-      await db.insert(payments).values(
-        transfers.map((t) => ({ sessionId, fromId: t.from, toId: t.to, amountCents: t.amountCents })),
-      );
-    }
+    // Money is settled on the running tab, which nets results across sessions.
     await db.update(sessions).set({ status: 'completed', endedAt: new Date() }).where(eq(sessions.id, sessionId));
   }
   revalidatePath('/', 'layout');
@@ -378,7 +363,6 @@ export async function endSession(sessionId: number) {
 
 export async function reopenSession(sessionId: number) {
   const db = await getDb();
-  await db.delete(payments).where(eq(payments.sessionId, sessionId));
   await db.update(sessions).set({ status: 'active', endedAt: null }).where(eq(sessions.id, sessionId));
   revalidatePath('/', 'layout');
   redirect(`/sessions/${sessionId}`);
@@ -391,12 +375,32 @@ export async function deleteSession(sessionId: number) {
   redirect('/');
 }
 
-export async function setPaymentPaid(paymentId: number, paid: boolean) {
+/* ---------- The tab ---------- */
+
+const MAX_PAYMENT_CENTS = 1_000_000;
+
+async function insertPayment(fromId: number, toId: number, amountCents: number): Promise<string | undefined> {
+  if (!fromId || !toId || fromId === toId) return 'Pick two different people.';
+  if (!Number.isInteger(amountCents) || amountCents <= 0 || amountCents > MAX_PAYMENT_CENTS) return 'Enter an amount.';
   const db = await getDb();
-  const [row] = await db
-    .update(payments)
-    .set({ paid })
-    .where(eq(payments.id, paymentId))
-    .returning({ sessionId: payments.sessionId });
-  if (row) revalidatePath(`/sessions/${row.sessionId}/summary`);
+  await db.insert(settlements).values({ fromId, toId, amountCents });
+  revalidatePath('/', 'layout');
+}
+
+/** One tap on a suggested payment: it happened, take it off the tab. */
+export async function markPaid(fromId: number, toId: number, amountCents: number) {
+  await insertPayment(fromId, toId, amountCents);
+}
+
+/** A payment that doesn't match a suggestion, e.g. a partial one. */
+export async function recordPayment(_: FormState, form: FormData): Promise<FormState> {
+  const amount = Math.round(Number(String(form.get('amount') ?? '').replace(/[$,\s]/g, '')) * 100);
+  const error = await insertPayment(Number(form.get('fromId')), Number(form.get('toId')), amount);
+  return error ? { error } : {};
+}
+
+export async function undoPayment(id: number) {
+  const db = await getDb();
+  await db.delete(settlements).where(eq(settlements.id, id));
+  revalidatePath('/', 'layout');
 }

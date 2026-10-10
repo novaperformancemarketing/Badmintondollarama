@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { BackLink, Badge, BottomNav, Money, formatDate } from '@/components/ui';
-import { completedHistory, listPlayers, playerNames } from '@/lib/data';
-import { signedMoney } from '@/lib/money';
+import { completedHistory, getTab, listPlayers, playerNames } from '@/lib/data';
+import { money, signedMoney } from '@/lib/money';
 import { netBySession, opponentLines, partnerLines, playerLines } from '@/lib/stats';
 import PlayerSettings from './PlayerSettings';
 
@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
   const playerId = Number((await params).id);
-  const [everyone, names, history] = await Promise.all([listPlayers(true), playerNames(), completedHistory('all')]);
+  const [everyone, names, history, tab] = await Promise.all([listPlayers(true), playerNames(), completedHistory('all'), getTab()]);
+  const onTab = tab.balances.get(playerId) ?? 0;
   const player = everyone.find((p) => p.id === playerId);
   if (!player) notFound();
   const name = (id: number) => names.get(id) ?? '?';
@@ -48,6 +49,14 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
               {rank ? `#${rank} all-time · ` : ''}
               {nights.length} {nights.length === 1 ? 'night' : 'nights'}
               {player.archived ? ' · retired' : ''}
+              {onTab !== 0 && (
+                <>
+                  {' · '}
+                  <Link href="/tab" style={{ color: 'var(--yellow)', fontWeight: 700 }}>
+                    {onTab > 0 ? `is owed ${money(onTab)}` : `owes ${money(-onTab)}`}
+                  </Link>
+                </>
+              )}
             </div>
           </div>
           <Badge />

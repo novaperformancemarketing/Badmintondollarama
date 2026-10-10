@@ -1,36 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useOptimistic, useState, useTransition } from 'react';
-import { deleteSession, reopenSession, setPaymentPaid } from '@/app/actions';
+import { useState, useTransition } from 'react';
+import { deleteSession, reopenSession } from '@/app/actions';
 import { Icon } from '@/components/ui';
-
-export function PaymentRow({ id, paid, from, to, amount }: { id: number; paid: boolean; from: string; to: string; amount: string }) {
-  const [, start] = useTransition();
-  const [optimisticPaid, setOptimisticPaid] = useOptimistic(paid);
-  return (
-    <label className="table-row" style={{ gridTemplateColumns: '22px 1fr auto', minHeight: 56, gap: 12, cursor: 'pointer' }}>
-      <input
-        type="checkbox"
-        checked={optimisticPaid}
-        onChange={(e) => {
-          const next = e.target.checked;
-          start(async () => {
-            setOptimisticPaid(next);
-            await setPaymentPaid(id, next);
-          });
-        }}
-        style={{ width: 22, height: 22, accentColor: 'var(--green)' }}
-      />
-      <span style={{ fontSize: 16, fontWeight: 600, textDecoration: optimisticPaid ? 'line-through' : 'none', opacity: optimisticPaid ? 0.6 : 1 }}>
-        {from} <span className="muted" style={{ fontWeight: 400 }}>pays</span> {to}
-      </span>
-      <span className="tag" style={{ fontSize: 17 }}>
-        {amount}
-      </span>
-    </label>
-  );
-}
 
 export function ShareButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);

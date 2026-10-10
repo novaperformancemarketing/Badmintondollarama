@@ -3,8 +3,9 @@ import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm';
 import { getDb, schema } from '@/db';
 import type { Round } from './schedule';
 import type { GameRecord } from './stats';
+import { tabBalances, tabTransfers } from './tab';
 
-const { players, sessions, sessionPlayers, games, byes, payments } = schema;
+const { players, sessions, sessionPlayers, games, byes, payments, settlements } = schema;
 
 export type Range = 'all' | 'season' | '30d';
 
@@ -127,4 +128,15 @@ export function toRecords(detail: SessionDetail): GameRecord[] {
     winner: g.winner,
     stakeCents: detail.session.stakeCents,
   }));
+}
+
+/** The running tab across every finished session, and the payments recorded against it. */
+export async function getTab() {
+  const db = await getDb();
+  const [history, paid] = await Promise.all([
+    completedHistory('all'),
+    db.select().from(settlements).orderBy(desc(settlements.createdAt), desc(settlements.id)),
+  ]);
+  const balances = tabBalances(history.games, paid);
+  return { balances, transfers: tabTransfers(balances), payments: paid };
 }

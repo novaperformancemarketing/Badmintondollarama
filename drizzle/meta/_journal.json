@@ -15,6 +15,13 @@
       "when": 1791146575205,
       "tag": "0001_brackets_and_shared_spots",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791611993837,
+      "tag": "0002_running_tab",
+      "breakpoints": true
     }
   ]
 }

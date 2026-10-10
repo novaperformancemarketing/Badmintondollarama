@@ -48,6 +48,12 @@ export const Icon = {
       <path d="M12 5v14M5 12h14" />
     </svg>
   ),
+  Dollar: ({ size = 22 }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" strokeWidth={2} {...stroke} aria-hidden>
+      <path d="M12 3v18" />
+      <path d="M17 7.5c-.6-1.5-2.3-2.5-5-2.5-3 0-4.5 1.4-4.5 3.2 0 4.3 10 2.3 10 7.1 0 1.9-1.8 3.2-5 3.2-2.8 0-4.6-1-5.3-2.7" />
+    </svg>
+  ),
   Share: ({ size = 20 }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" strokeWidth={2.6} {...stroke} aria-hidden>
       <path d="M12 15V3" />
@@ -99,13 +105,14 @@ export function Money({ cents, className = '', style }: { cents: number; classNa
   );
 }
 
-type NavKey = 'home' | 'session' | 'leaders' | 'players';
+type NavKey = 'home' | 'session' | 'leaders' | 'tab' | 'players';
 
 export function BottomNav({ active }: { active: NavKey }) {
   const items: { key: NavKey; href: string; label: string; icon: ReactNode }[] = [
     { key: 'home', href: '/', label: 'Home', icon: <Icon.Home /> },
     { key: 'session', href: '/sessions/live', label: 'Session', icon: <Icon.Session /> },
     { key: 'leaders', href: '/leaderboard', label: 'Leaders', icon: <Icon.Bars /> },
+    { key: 'tab', href: '/tab', label: 'Tab', icon: <Icon.Dollar /> },
     { key: 'players', href: '/players', label: 'Players', icon: <Icon.Users /> },
   ];
   return (

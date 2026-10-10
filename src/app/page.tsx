@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { BottomNav, Icon, Logo, Money, formatDate } from '@/components/ui';
-import { completedHistory, getActiveSessions, getSessionDetail, listPlayers, playerNames } from '@/lib/data';
+import { completedHistory, getActiveSessions, getSessionDetail, getTab, listPlayers, playerNames } from '@/lib/data';
 import { progress, tally } from '@/lib/live';
 import { money } from '@/lib/money';
 import { netBySession, playerLines } from '@/lib/stats';
@@ -8,11 +8,12 @@ import { netBySession, playerLines } from '@/lib/stats';
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const [active, history, names, roster] = await Promise.all([
+  const [active, history, names, roster, tab] = await Promise.all([
     getActiveSessions(),
     completedHistory('all'),
     playerNames(),
     listPlayers(),
+    getTab(),
   ]);
   const name = (id: number) => names.get(id) ?? '?';
 
@@ -131,6 +132,42 @@ export default async function HomePage() {
           </div>
         )}
       </section>
+
+      {history.sessions.length > 0 && (
+        <section className="section" style={{ paddingTop: 24 }}>
+          <div className="section-head">
+            <h2 className="h2">The tab</h2>
+            <Link href="/tab" className="link-strong">
+              Settle up
+            </Link>
+          </div>
+          {tab.transfers.length === 0 ? (
+            <div className="notice" style={{ justifyContent: 'center', fontWeight: 700 }}>
+              All square! Nobody owes anything.
+            </div>
+          ) : (
+            <Link href="/tab" className="card clip" style={{ textDecoration: 'none', color: 'var(--ink)' }}>
+              {tab.transfers.slice(0, 3).map((t, i) => (
+                <span
+                  key={`${t.from}-${t.to}`}
+                  className="table-row"
+                  style={{ gridTemplateColumns: '1fr auto', minHeight: 50, borderTop: i === 0 ? 0 : undefined }}
+                >
+                  <span style={{ fontWeight: 600 }}>
+                    {name(t.from)} <span className="muted" style={{ fontWeight: 400 }}>owes</span> {name(t.to)}
+                  </span>
+                  <span className="tag">{money(t.amountCents)}</span>
+                </span>
+              ))}
+              {tab.transfers.length > 3 && (
+                <span className="table-row small muted" style={{ gridTemplateColumns: '1fr', minHeight: 44 }}>
+                  +{tab.transfers.length - 3} more on the tab
+                </span>
+              )}
+            </Link>
+          )}
+        </section>
+      )}
 
       {recent.length > 0 && (
         <section className="section" style={{ paddingTop: 24, paddingBottom: 16 }}>
